@@ -240,7 +240,8 @@ function generateTopicsForBusiness(businessType, businessName, location, nearbyA
 }
 
 async function checkExistingPages() {
-  // Check for common page patterns in various frameworks
+  // Check for common page patterns in the parent directory (website root)
+  const websiteRoot = path.join(process.cwd(), '..');
   const patterns = [
     'pages/**/*.{js,jsx,ts,tsx,vue,svelte}',
     'src/pages/**/*.{js,jsx,ts,tsx,vue,svelte}',
@@ -255,7 +256,7 @@ async function checkExistingPages() {
   const existingPages = new Set();
   
   for (const pattern of patterns) {
-    const files = glob.sync(pattern, { nodir: true });
+    const files = glob.sync(pattern, { nodir: true, cwd: websiteRoot });
     files.forEach(file => {
       // Extract potential route from file path
       const route = file
@@ -283,7 +284,9 @@ async function checkExistingPages() {
 }
 
 async function detectFramework() {
-  const packageJsonPath = path.join(process.cwd(), 'package.json');
+  // We're running from .blog-generator, so check parent directory
+  const websiteRoot = path.join(process.cwd(), '..');
+  const packageJsonPath = path.join(websiteRoot, 'package.json');
   
   if (await fs.pathExists(packageJsonPath)) {
     const packageJson = await fs.readJson(packageJsonPath);
@@ -298,6 +301,12 @@ async function detectFramework() {
     if (deps['@angular/core']) return 'angular';
     if (deps.express) return 'express';
     if (deps.fastify) return 'fastify';
+  }
+  
+  // Also check for Next.js specific files
+  if (await fs.pathExists(path.join(websiteRoot, 'next.config.js')) || 
+      await fs.pathExists(path.join(websiteRoot, 'next.config.mjs'))) {
+    return 'nextjs';
   }
   
   return 'static';
