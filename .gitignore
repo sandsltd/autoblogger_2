@@ -1,0 +1,9 @@
+node_modules/
+.env
+.env.local
+blog-generator.config.js
+topic-history.json
+content/
+public/
+*.log
+.DS_Store
