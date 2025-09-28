@@ -747,14 +747,16 @@ CRITICAL for avoiding AI detection:
     if (answers.setupGitHub) {
       const workflowSpinner = ora('Setting up GitHub Actions...').start();
       try {
-        const workflowDir = path.join(process.cwd(), '.github', 'workflows');
+        // Create workflow in website root, not in .blog-generator
+        const websiteRoot = path.dirname(process.cwd());
+        const workflowDir = path.join(websiteRoot, '.github', 'workflows');
         await fs.ensureDir(workflowDir);
         
         const workflowContent = generateWorkflow(config);
         const workflowPath = path.join(workflowDir, 'blog-generation.yml');
         
         await fs.writeFile(workflowPath, workflowContent);
-        workflowSpinner.succeed('GitHub Actions workflow created');
+        workflowSpinner.succeed('GitHub Actions workflow created in website root');
       } catch (error) {
         workflowSpinner.warn(`Could not create GitHub workflow: ${error.message}`);
       }
