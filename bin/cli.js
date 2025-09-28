@@ -7,6 +7,7 @@ const { generate } = require('../lib/generate');
 const { schedule } = require('./schedule');
 const fs = require('fs-extra');
 const path = require('path');
+const { generateWorkflow } = require('../lib/workflow-template');
 
 const program = new Command();
 
@@ -121,6 +122,75 @@ program
       console.log(chalk.green('✅ Topic history reset successfully!'));
     } catch (error) {
       console.error(chalk.red('Reset failed:'), error.message);
+    }
+  });
+
+program
+  .command('setup-github')
+  .description('Set up GitHub Actions for automated generation')
+  .option('-c, --config <path>', 'path to config file', './blog-generator.config.js')
+  .action(async (options) => {
+    try {
+      const configPath = path.resolve(options.config);
+      if (!await fs.pathExists(configPath)) {
+        console.error(chalk.red('Config file not found. Run "blog-generator init" first.'));
+        process.exit(1);
+      }
+      
+      const config = require(configPath);
+      
+      console.log(chalk.blue('🚀 Setting up GitHub Actions...\n'));
+      
+      // Check if .github/workflows exists
+      const workflowDir = path.join(process.cwd(), '.github', 'workflows');
+      await fs.ensureDir(workflowDir);
+      
+      // Generate workflow file
+      const workflowContent = generateWorkflow(config);
+      const workflowPath = path.join(workflowDir, 'blog-generation.yml');
+      
+      // Check if workflow already exists
+      if (await fs.pathExists(workflowPath)) {
+        const inquirer = require('inquirer');
+        const { overwrite } = await inquirer.prompt([
+          {
+            type: 'confirm',
+            name: 'overwrite',
+            message: 'GitHub Actions workflow already exists. Overwrite?',
+            default: false
+          }
+        ]);
+        
+        if (!overwrite) {
+          console.log(chalk.yellow('Setup cancelled.'));
+          return;
+        }
+      }
+      
+      await fs.writeFile(workflowPath, workflowContent);
+      
+      console.log(chalk.green('✅ GitHub Actions workflow created!\n'));
+      console.log(chalk.cyan('📝 Next steps:'));
+      console.log(chalk.white('  1. Add your OpenAI API key to GitHub Secrets:'));
+      console.log(chalk.gray('     - Go to your repo Settings > Secrets and variables > Actions'));
+      console.log(chalk.gray('     - Click "New repository secret"'));
+      console.log(chalk.gray('     - Name: OPENAI_API_KEY'));
+      console.log(chalk.gray('     - Value: Your OpenAI API key'));
+      console.log();
+      console.log(chalk.white('  2. Commit and push the workflow:'));
+      console.log(chalk.gray('     git add .github/workflows/blog-generation.yml'));
+      console.log(chalk.gray('     git commit -m "Add automated blog generation"'));
+      console.log(chalk.gray('     git push'));
+      console.log();
+      console.log(chalk.white('  3. The workflow will run automatically based on your schedule:'));
+      console.log(chalk.gray(`     ${config.schedule.cron === 'manual' ? 'Weekly on Mondays' : config.schedule.cron}`));
+      console.log();
+      console.log(chalk.white('  4. You can also trigger it manually:'));
+      console.log(chalk.gray('     Go to Actions tab > Generate Blog Post > Run workflow'));
+      
+    } catch (error) {
+      console.error(chalk.red('Setup failed:'), error.message);
+      process.exit(1);
     }
   });
 

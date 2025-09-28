@@ -7,6 +7,7 @@ const chalk = require('chalk');
 const ora = require('ora');
 const glob = require('glob');
 const { templates } = require('../lib/blog-templates');
+const { generateWorkflow } = require('../lib/workflow-template');
 
 const businessTypes = {
   'window_cleaner': {
@@ -524,6 +525,12 @@ async function init() {
           { name: 'Twice daily (9am & 3pm)', value: '0 9,15 * * *' },
           { name: 'Manual only', value: 'manual' }
         ]
+      },
+      {
+        type: 'confirm',
+        name: 'setupGitHub',
+        message: 'Would you like to set up GitHub Actions for automatic generation?',
+        default: true
       }
     ]);
     
@@ -617,6 +624,23 @@ CRITICAL for avoiding AI detection:
       await createBlogIndexPage(answers.blogSlug, config, framework);
     }
     
+    // Set up GitHub Actions if requested
+    if (answers.setupGitHub) {
+      const workflowSpinner = ora('Setting up GitHub Actions...').start();
+      try {
+        const workflowDir = path.join(process.cwd(), '.github', 'workflows');
+        await fs.ensureDir(workflowDir);
+        
+        const workflowContent = generateWorkflow(config);
+        const workflowPath = path.join(workflowDir, 'blog-generation.yml');
+        
+        await fs.writeFile(workflowPath, workflowContent);
+        workflowSpinner.succeed('GitHub Actions workflow created');
+      } catch (error) {
+        workflowSpinner.warn(`Could not create GitHub workflow: ${error.message}`);
+      }
+    }
+    
     setupSpinner.succeed('Configuration created successfully!');
     
     console.log(chalk.green('\n✅ Setup complete!\n'));
@@ -627,11 +651,25 @@ CRITICAL for avoiding AI detection:
     console.log(chalk.gray(`  - Blog posts will be saved to: ${defaultPaths.posts}`));
     console.log(chalk.gray(`  - Images will be saved to: ${defaultPaths.images}`));
     
+    if (answers.setupGitHub) {
+      console.log(chalk.gray(`  - GitHub Actions workflow: .github/workflows/blog-generation.yml`));
+    }
+    
     console.log(chalk.yellow('\n📝 Next steps:'));
     console.log(chalk.white('  1. Run a test generation:'));
     console.log(chalk.gray('     npm run generate'));
-    console.log(chalk.white('  2. Set up automated scheduling:'));
-    console.log(chalk.gray('     npm run schedule'));
+    
+    if (answers.setupGitHub) {
+      console.log(chalk.white('  2. Set up GitHub Actions:'));
+      console.log(chalk.gray('     - Add OPENAI_API_KEY to GitHub Secrets'));
+      console.log(chalk.gray('     - Commit and push: git add . && git commit -m "Add blog generator" && git push'));
+      console.log(chalk.gray('     - Posts will generate automatically on schedule'));
+    } else {
+      console.log(chalk.white('  2. Set up automation:'));
+      console.log(chalk.gray('     npm run schedule      (local scheduling)'));
+      console.log(chalk.gray('     npx blog-generator setup-github  (GitHub Actions)'));
+    }
+    
     console.log(chalk.white('  3. View all commands:'));
     console.log(chalk.gray('     npx blog-generator --help'));
     
