@@ -434,7 +434,8 @@ async function createBlogIndexPage(slug, config, framework) {
     
     switch (framework) {
       case 'nextjs':
-        console.log(chalk.gray('  - Install required dependency: npm install gray-matter'));
+        console.log(chalk.yellow('  ⚠️  REQUIRED: Install gray-matter package:'));
+        console.log(chalk.white('     cd .. && npm install gray-matter'));
         console.log(chalk.gray(`  - Your blog is available at: /${slug}`));
         console.log(chalk.gray(`  - Blog posts will be at: /${slug}/[slug]`));
         break;
@@ -727,6 +728,19 @@ CRITICAL for avoiding AI detection:
     // Create blog index page if requested
     if (answers.createBlogPage) {
       await createBlogIndexPage(answers.blogSlug, config, framework);
+      
+      // Install gray-matter for Next.js projects
+      if (framework === 'nextjs') {
+        const installSpinner = ora('Installing gray-matter dependency for Next.js...').start();
+        try {
+          const { execSync } = require('child_process');
+          const websiteRoot = path.dirname(process.cwd());
+          execSync('npm install gray-matter', { cwd: websiteRoot, stdio: 'ignore' });
+          installSpinner.succeed('Installed gray-matter dependency');
+        } catch (error) {
+          installSpinner.warn('Could not auto-install gray-matter. Please run: npm install gray-matter');
+        }
+      }
     }
     
     // Set up GitHub Actions if requested
