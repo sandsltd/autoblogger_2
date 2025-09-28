@@ -234,6 +234,54 @@ async function detectFramework() {
   return 'static';
 }
 
+function getDefaultPaths(framework) {
+  // Smart defaults based on framework
+  const defaults = {
+    nextjs: {
+      posts: './content/posts',
+      images: './public/images/blog'
+    },
+    gatsby: {
+      posts: './content/posts',
+      images: './static/images/blog'
+    },
+    nuxt: {
+      posts: './content/posts',
+      images: './static/images/blog'
+    },
+    sveltekit: {
+      posts: './content/posts',
+      images: './static/images/blog'
+    },
+    angular: {
+      posts: './src/content/posts',
+      images: './src/assets/images/blog'
+    },
+    'vite-react': {
+      posts: './content/posts',
+      images: './public/images/blog'
+    },
+    'vite-vue': {
+      posts: './content/posts',
+      images: './public/images/blog'
+    },
+    express: {
+      posts: './content/posts',
+      images: './public/images/blog'
+    },
+    fastify: {
+      posts: './content/posts',
+      images: './public/images/blog'
+    },
+    static: {
+      posts: './content/posts',
+      images: './images/blog'
+    }
+  };
+  
+  return defaults[framework] || defaults.static;
+}
+
 async function createBlogIndexPage(slug, config, framework) {
   const spinner = ora(`Creating blog index page for ${framework}...`).start();
   
@@ -465,18 +513,6 @@ async function init() {
         default: true
       },
       {
-        type: 'input',
-        name: 'outputPath',
-        message: 'Where to save blog posts? (relative path)',
-        default: './content/posts'
-      },
-      {
-        type: 'input',
-        name: 'imagePath',
-        message: 'Where to save images? (relative path)',
-        default: './public/images/blog'
-      },
-      {
         type: 'list',
         name: 'schedule',
         message: 'How often to generate posts?',
@@ -492,6 +528,9 @@ async function init() {
     ]);
     
     const setupSpinner = ora('Generating configuration...').start();
+    
+    // Get default paths for the detected framework
+    const defaultPaths = getDefaultPaths(framework);
     
     // Generate topics based on business type
     const businessTypeKey = answers.businessType === 'other' ? 'other' : answers.businessType;
@@ -523,8 +562,8 @@ async function init() {
         imageModel: 'dall-e-2'
       },
       output: {
-        postsPath: answers.outputPath,
-        imagesPath: answers.imagePath
+        postsPath: defaultPaths.posts,
+        imagesPath: defaultPaths.images
       },
       schedule: {
         cron: answers.schedule
@@ -564,8 +603,8 @@ CRITICAL for avoiding AI detection:
     );
     
     // Create directories
-    await fs.ensureDir(path.join(process.cwd(), answers.outputPath));
-    await fs.ensureDir(path.join(process.cwd(), answers.imagePath));
+    await fs.ensureDir(path.join(process.cwd(), defaultPaths.posts));
+    await fs.ensureDir(path.join(process.cwd(), defaultPaths.images));
     
     // Create topic history file
     await fs.writeJson(
@@ -585,6 +624,8 @@ CRITICAL for avoiding AI detection:
     console.log(chalk.gray(`  - Config file: ${configPath}`));
     console.log(chalk.gray(`  - Environment file: .env`));
     console.log(chalk.gray(`  - Topics generated: ${topics.length}`));
+    console.log(chalk.gray(`  - Blog posts will be saved to: ${defaultPaths.posts}`));
+    console.log(chalk.gray(`  - Images will be saved to: ${defaultPaths.images}`));
     
     console.log(chalk.yellow('\n📝 Next steps:'));
     console.log(chalk.white('  1. Run a test generation:'));
