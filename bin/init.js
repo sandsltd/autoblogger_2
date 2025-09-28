@@ -7,6 +7,7 @@ const chalk = require('chalk');
 const ora = require('ora');
 const glob = require('glob');
 const { templates } = require('../lib/blog-templates');
+const { postPageTemplates } = require('../lib/post-page-template');
 const { generateWorkflow } = require('../lib/workflow-template');
 const OpenAI = require('openai');
 
@@ -728,6 +729,19 @@ CRITICAL for avoiding AI detection:
     // Create blog index page if requested
     if (answers.createBlogPage) {
       await createBlogIndexPage(answers.blogSlug, config, framework);
+      
+      // Create individual post page for Next.js
+      if (framework === 'nextjs' && postPageTemplates[framework]) {
+        const websiteRoot = path.dirname(process.cwd());
+        const postPageDir = path.join(websiteRoot, 'src', 'app', answers.blogSlug, '[slug]');
+        await fs.ensureDir(postPageDir);
+        
+        const postPageContent = postPageTemplates[framework](answers.blogSlug, config);
+        const postPagePath = path.join(postPageDir, 'page.tsx');
+        
+        await fs.writeFile(postPagePath, postPageContent);
+        console.log(chalk.green(`✓ Created blog post page at src/app/${answers.blogSlug}/[slug]/page.tsx`));
+      }
       
       // Install gray-matter for Next.js projects
       if (framework === 'nextjs') {

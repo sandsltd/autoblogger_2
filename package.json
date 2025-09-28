@@ -1,6 +1,6 @@
 {
   "name": "seo-blog-generator",
-  "version": "2.3.1",
+  "version": "3.0.0",
   "description": "Automated SEO blog generation for local businesses",
   "main": "lib/generate.js",
   "bin": {
