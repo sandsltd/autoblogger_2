@@ -1,6 +1,6 @@
 {
   "name": "seo-blog-generator",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Automated SEO blog generation for local businesses",
   "main": "lib/generate.js",
   "bin": {
@@ -16,6 +16,7 @@
     "chalk": "^4.1.2",
     "dotenv": "^17.2.2",
     "fs-extra": "^11.2.0",
+    "glob": "^10.3.10",
     "inquirer": "^8.2.6",
     "node-cron": "^3.0.3",
     "node-fetch": "^2.7.0",

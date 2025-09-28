@@ -5,6 +5,8 @@ const fs = require('fs-extra');
 const path = require('path');
 const chalk = require('chalk');
 const ora = require('ora');
+const glob = require('glob');
+const { templates } = require('../lib/blog-templates');
 
 const businessTypes = {
   'window_cleaner': {
@@ -168,10 +170,174 @@ function generateTopicsForBusiness(businessType, businessName, location, nearbyA
   return topics;
 }
 
+async function checkExistingPages() {
+  // Check for common page patterns in various frameworks
+  const patterns = [
+    'pages/**/*.{js,jsx,ts,tsx,vue,svelte}',
+    'src/pages/**/*.{js,jsx,ts,tsx,vue,svelte}',
+    'src/routes/**/*.{js,jsx,ts,tsx,vue,svelte}',
+    'app/**/*.{js,jsx,ts,tsx}',
+    'src/app/**/*.{js,jsx,ts,tsx}',
+    'content/**/*.md',
+    'public/**/*.html',
+    '*.html'
+  ];
+  
+  const existingPages = new Set();
+  
+  for (const pattern of patterns) {
+    const files = glob.sync(pattern, { nodir: true });
+    files.forEach(file => {
+      // Extract potential route from file path
+      const route = file
+        .replace(/\.(js|jsx|ts|tsx|vue|svelte|md|html)$/, '')
+        .replace(/^(pages|src\/pages|src\/routes|app|src\/app|content|public)\//, '')
+        .replace(/\/index$/, '')
+        .replace(/\[.*?\]/g, ':param')
+        .toLowerCase();
+      
+      if (route) {
+        existingPages.add(route);
+        existingPages.add('/' + route);
+      }
+    });
+  }
+  
+  // Also check for common blog routes
+  ['blog', 'blogs', 'news', 'articles', 'posts', 'resources', 'insights'].forEach(route => {
+    if (existingPages.has(route) || existingPages.has('/' + route)) {
+      existingPages.add(route);
+    }
+  });
+  
+  return Array.from(existingPages);
+}
+
+async function detectFramework() {
+  const packageJsonPath = path.join(process.cwd(), 'package.json');
+  
+  if (await fs.pathExists(packageJsonPath)) {
+    const packageJson = await fs.readJson(packageJsonPath);
+    const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
+    
+    if (deps.next) return 'nextjs';
+    if (deps.gatsby) return 'gatsby';
+    if (deps.nuxt || deps.nuxt3) return 'nuxt';
+    if (deps.vite && deps.react) return 'vite-react';
+    if (deps.vite && deps.vue) return 'vite-vue';
+    if (deps['@sveltejs/kit']) return 'sveltekit';
+    if (deps['@angular/core']) return 'angular';
+    if (deps.express) return 'express';
+    if (deps.fastify) return 'fastify';
+  }
+  
+  return 'static';
+}
+
+async function createBlogIndexPage(slug, config, framework) {
+  const spinner = ora(`Creating blog index page for ${framework}...`).start();
+  
+  try {
+    const template = templates[framework];
+    if (!template) {
+      spinner.warn(`No template available for ${framework}, skipping blog page creation`);
+      return;
+    }
+    
+    // Determine where to create the blog page based on framework
+    let pagePath;
+    switch (framework) {
+      case 'nextjs':
+        // Check for app directory (App Router) vs pages directory
+        if (await fs.pathExists(path.join(process.cwd(), 'app'))) {
+          pagePath = path.join(process.cwd(), 'app', slug, 'page.jsx');
+        } else if (await fs.pathExists(path.join(process.cwd(), 'src/app'))) {
+          pagePath = path.join(process.cwd(), 'src/app', slug, 'page.jsx');
+        } else if (await fs.pathExists(path.join(process.cwd(), 'pages'))) {
+          pagePath = path.join(process.cwd(), 'pages', `${slug}.jsx`);
+        } else if (await fs.pathExists(path.join(process.cwd(), 'src/pages'))) {
+          pagePath = path.join(process.cwd(), 'src/pages', `${slug}.jsx`);
+        } else {
+          // Default to pages directory
+          pagePath = path.join(process.cwd(), 'pages', `${slug}.jsx`);
+        }
+        
+        // Also create the lib file for Next.js
+        const libPath = path.join(process.cwd(), 'lib', 'blog.js');
+        await fs.ensureDir(path.dirname(libPath));
+        await fs.writeFile(libPath, template.lib());
+        break;
+        
+      case 'gatsby':
+        pagePath = path.join(process.cwd(), 'src/pages', `${slug}.js`);
+        break;
+        
+      case 'nuxt':
+        pagePath = path.join(process.cwd(), 'pages', `${slug}.vue`);
+        break;
+        
+      case 'sveltekit':
+        pagePath = path.join(process.cwd(), 'src/routes', slug, '+page.svelte');
+        
+        // Also create the loader file
+        const loaderPath = path.join(process.cwd(), 'src/routes', slug, '+page.js');
+        await fs.ensureDir(path.dirname(loaderPath));
+        await fs.writeFile(loaderPath, template.loader());
+        break;
+        
+      case 'static':
+      default:
+        pagePath = path.join(process.cwd(), `${slug}.html`);
+        break;
+    }
+    
+    // Ensure directory exists
+    await fs.ensureDir(path.dirname(pagePath));
+    
+    // Write the blog page
+    await fs.writeFile(pagePath, template.page(slug, config));
+    
+    spinner.succeed(`Blog index page created at: ${pagePath}`);
+    
+    // Provide framework-specific instructions
+    console.log(chalk.cyan('\n📝 Blog Page Setup Instructions:'));
+    
+    switch (framework) {
+      case 'nextjs':
+        console.log(chalk.gray('  - Install required dependency: npm install gray-matter'));
+        console.log(chalk.gray(`  - Your blog is available at: /${slug}`));
+        console.log(chalk.gray(`  - Blog posts will be at: /${slug}/[slug]`));
+        break;
+      case 'gatsby':
+        console.log(chalk.gray('  - Make sure you have gatsby-transformer-remark installed'));
+        console.log(chalk.gray('  - Update gatsby-config.js to include the content/posts directory'));
+        break;
+      case 'nuxt':
+        console.log(chalk.gray('  - Make sure @nuxt/content module is installed'));
+        console.log(chalk.gray('  - Posts should be in content/posts directory'));
+        break;
+      case 'sveltekit':
+        console.log(chalk.gray(`  - Blog page created at /src/routes/${slug}/+page.svelte`));
+        console.log(chalk.gray('  - Create individual post pages at /src/routes/[slug]/+page.svelte'));
+        break;
+      case 'static':
+        console.log(chalk.gray(`  - Static HTML page created at ${slug}.html`));
+        console.log(chalk.gray('  - You may need to create an API endpoint to serve post data'));
+        break;
+    }
+    
+  } catch (error) {
+    spinner.fail(`Failed to create blog page: ${error.message}`);
+  }
+}
+
 async function init() {
   console.log(chalk.blue.bold('\n🚀 SEO Blog Generator Setup Wizard\n'));
   
   try {
+    // Detect framework
+    const framework = await detectFramework();
+    console.log(chalk.cyan(`Detected framework: ${framework}\n`));
     // Check if config already exists
     const configPath = path.join(process.cwd(), 'blog-generator.config.js');
     if (await fs.pathExists(configPath)) {
@@ -189,6 +355,11 @@ async function init() {
         return;
       }
     }
+    
+    // Check existing pages
+    const spinner = ora('Checking for existing pages...').start();
+    const existingPages = await checkExistingPages();
+    spinner.succeed('Page check complete');
     
     // Collect business information
     const answers = await inquirer.prompt([
@@ -264,6 +435,37 @@ async function init() {
       },
       {
         type: 'input',
+        name: 'blogSlug',
+        message: 'What URL slug would you like for your blog section?',
+        default: answers => {
+          // Suggest available slugs
+          const suggestions = ['blog', 'blogs', 'news', 'articles', 'insights', 'resources', 'updates'];
+          const available = suggestions.find(s => !existingPages.includes(s) && !existingPages.includes('/' + s));
+          return available || 'blog';
+        },
+        validate: input => {
+          const slug = input.toLowerCase().replace(/^\//, '').replace(/\/$/, '');
+          
+          if (!/^[a-z0-9-]+$/.test(slug)) {
+            return 'Slug can only contain lowercase letters, numbers, and hyphens';
+          }
+          
+          if (existingPages.includes(slug) || existingPages.includes('/' + slug)) {
+            return chalk.red(`⚠️  The slug "/${slug}" already exists in your project. Please choose a different one.`);
+          }
+          
+          return true;
+        },
+        filter: input => input.toLowerCase().replace(/^\//, '').replace(/\/$/, '')
+      },
+      {
+        type: 'confirm',
+        name: 'createBlogPage',
+        message: 'Would you like to auto-create the blog index page?',
+        default: true
+      },
+      {
+        type: 'input',
         name: 'outputPath',
         message: 'Where to save blog posts? (relative path)',
         default: './content/posts'
@@ -289,7 +491,7 @@ async function init() {
       }
     ]);
     
-    const spinner = ora('Generating configuration...').start();
+    const setupSpinner = ora('Generating configuration...').start();
     
     // Generate topics based on business type
     const businessTypeKey = answers.businessType === 'other' ? 'other' : answers.businessType;
@@ -310,6 +512,11 @@ async function init() {
         nearbyAreas: answers.nearbyAreas,
         website: answers.websiteUrl
       },
+      blog: {
+        slug: answers.blogSlug,
+        url: `${answers.websiteUrl}/${answers.blogSlug}`,
+        createIndexPage: answers.createBlogPage
+      },
       ai: {
         model: answers.aiModel,
         generateImages: answers.generateImages,
@@ -322,6 +529,7 @@ async function init() {
       schedule: {
         cron: answers.schedule
       },
+      framework: framework,
       prompts: {
         context: `You are writing for ${answers.businessName}, a professional ${businessTypeName.toLowerCase()} company in ${answers.location}.
 - Always mention local context when relevant
@@ -365,7 +573,12 @@ CRITICAL for avoiding AI detection:
       []
     );
     
-    spinner.succeed('Configuration created successfully!');
+    // Create blog index page if requested
+    if (answers.createBlogPage) {
+      await createBlogIndexPage(answers.blogSlug, config, framework);
+    }
+    
+    setupSpinner.succeed('Configuration created successfully!');
     
     console.log(chalk.green('\n✅ Setup complete!\n'));
     console.log(chalk.cyan('Generated configuration:'));

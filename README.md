@@ -13,6 +13,10 @@ Automated SEO-optimized blog generation for local businesses using AI. Generate 
 - 🏢 Multiple business type templates
 - 💂 British English support
 - 🚫 AI detection avoidance techniques
+- 🎨 **NEW: Auto-creates blog index page for your framework**
+- 🔍 **NEW: Detects existing pages to avoid URL conflicts**
+- 🚀 **NEW: Framework detection (Next.js, Gatsby, Nuxt, SvelteKit, etc.)**
+- 📝 **NEW: Customizable blog URL slug**
 
 ## Quick Start
 
@@ -36,11 +40,16 @@ Run the interactive setup wizard:
 blog-generator init
 ```
 
-This will guide you through:
-- Business information (name, type, location)
-- OpenAI API configuration
-- Output directories
-- Generation schedule
+The wizard will:
+1. **Detect your framework** (Next.js, Gatsby, Nuxt, SvelteKit, etc.)
+2. **Check for existing pages** to avoid URL conflicts
+3. **Ask for your blog URL slug** (suggesting available options)
+4. Guide you through:
+   - Business information (name, type, location)
+   - OpenAI API configuration
+   - Output directories
+   - Generation schedule
+5. **Optionally create a blog index page** tailored to your framework
 
 ### Generate Your First Post
 
@@ -88,6 +97,11 @@ module.exports = {
     nearbyAreas: ["Leeds", "Harrogate", "Selby"],
     website: "https://yourbusiness.com"
   },
+  blog: {
+    slug: "insights",  // Your chosen blog URL
+    url: "https://yourbusiness.com/insights",
+    createIndexPage: true
+  },
   ai: {
     model: "gpt-5-nano-2025-08-07",
     generateImages: true,
@@ -100,6 +114,7 @@ module.exports = {
   schedule: {
     cron: "0 */3 * * *" // Every 3 hours
   },
+  framework: "nextjs",  // Auto-detected
   topics: [
     // Auto-generated based on business type
   ]
