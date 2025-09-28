@@ -8,6 +8,7 @@ const ora = require('ora');
 const glob = require('glob');
 const { templates } = require('../lib/blog-templates');
 const { generateWorkflow } = require('../lib/workflow-template');
+const OpenAI = require('openai');
 
 const businessTypes = {
   'window_cleaner': {
@@ -120,11 +121,78 @@ const businessTypes = {
       'security upgrades'
     ]
   },
+  'web_agency': {
+    name: 'Web Design & Digital Agency',
+    baseTopics: [
+      'responsive web design trends',
+      'SEO best practices',
+      'local SEO strategies',
+      'website speed optimization',
+      'mobile-first design',
+      'conversion rate optimization',
+      'content marketing strategies',
+      'social media integration',
+      'e-commerce website features',
+      'WordPress vs custom development',
+      'website accessibility standards',
+      'Google Analytics setup',
+      'website security essentials',
+      'UI/UX design principles',
+      'progressive web apps',
+      'API integration',
+      'website maintenance',
+      'domain and hosting',
+      'SSL certificates importance',
+      'GDPR compliance for websites'
+    ]
+  },
   'other': {
     name: 'Other Business Type',
     baseTopics: []
   }
 };
+
+async function generateTopicsWithAI(businessType, location, apiKey) {
+  const openai = new OpenAI({ apiKey });
+  const locationName = location.split(',')[0].trim();
+  
+  try {
+    console.log(chalk.cyan('🤖 Generating custom topics for your business type...'));
+    
+    const response = await openai.chat.completions.create({
+      model: 'gpt-5-nano-2025-08-07',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an SEO expert who generates blog topics for businesses. Create specific, valuable topics that would help with local SEO.'
+        },
+        {
+          role: 'user',
+          content: `Generate 50 specific blog topics for a ${businessType} business in ${location}. 
+          Include a mix of:
+          - How-to guides
+          - Industry trends
+          - Local/seasonal topics
+          - Common problems and solutions
+          - Cost/pricing guides
+          - Technology and innovation
+          - Regulatory and compliance
+          - Case studies
+          - Comparisons
+          
+          Return as a JSON array of strings. Each topic should be specific and valuable for SEO.`
+        }
+      ],
+      response_format: { type: 'json_object' },
+    });
+    
+    const result = JSON.parse(response.choices[0].message.content || '{}');
+    return result.topics || [];
+  } catch (error) {
+    console.error(chalk.yellow('Could not generate custom topics, using defaults'));
+    return [];
+  }
+}
 
 function generateTopicsForBusiness(businessType, businessName, location, nearbyAreas) {
   const baseTopics = businessTypes[businessType]?.baseTopics || [];
@@ -293,50 +361,54 @@ async function createBlogIndexPage(slug, config, framework) {
       return;
     }
     
+    // Get the website root (parent of .blog-generator)
+    const websiteRoot = path.join(process.cwd(), '..');
+    
     // Determine where to create the blog page based on framework
     let pagePath;
     switch (framework) {
       case 'nextjs':
         // Check for app directory (App Router) vs pages directory
-        if (await fs.pathExists(path.join(process.cwd(), 'app'))) {
-          pagePath = path.join(process.cwd(), 'app', slug, 'page.jsx');
-        } else if (await fs.pathExists(path.join(process.cwd(), 'src/app'))) {
-          pagePath = path.join(process.cwd(), 'src/app', slug, 'page.jsx');
-        } else if (await fs.pathExists(path.join(process.cwd(), 'pages'))) {
-          pagePath = path.join(process.cwd(), 'pages', `${slug}.jsx`);
-        } else if (await fs.pathExists(path.join(process.cwd(), 'src/pages'))) {
-          pagePath = path.join(process.cwd(), 'src/pages', `${slug}.jsx`);
+        if (await fs.pathExists(path.join(websiteRoot, 'app'))) {
+          pagePath = path.join(websiteRoot, 'app', slug, 'page.jsx');
+        } else if (await fs.pathExists(path.join(websiteRoot, 'src/app'))) {
+          pagePath = path.join(websiteRoot, 'src/app', slug, 'page.jsx');
+        } else if (await fs.pathExists(path.join(websiteRoot, 'pages'))) {
+          pagePath = path.join(websiteRoot, 'pages', `${slug}.jsx`);
+        } else if (await fs.pathExists(path.join(websiteRoot, 'src/pages'))) {
+          pagePath = path.join(websiteRoot, 'src/pages', `${slug}.jsx`);
         } else {
           // Default to pages directory
-          pagePath = path.join(process.cwd(), 'pages', `${slug}.jsx`);
+          pagePath = path.join(websiteRoot, 'pages', `${slug}.jsx`);
         }
         
         // Also create the lib file for Next.js
-        const libPath = path.join(process.cwd(), 'lib', 'blog.js');
+        const libPath = path.join(websiteRoot, 'lib', 'blog.js');
         await fs.ensureDir(path.dirname(libPath));
         await fs.writeFile(libPath, template.lib());
         break;
         
       case 'gatsby':
-        pagePath = path.join(process.cwd(), 'src/pages', `${slug}.js`);
+        pagePath = path.join(websiteRoot, 'src/pages', `${slug}.js`);
         break;
         
       case 'nuxt':
-        pagePath = path.join(process.cwd(), 'pages', `${slug}.vue`);
+        pagePath = path.join(websiteRoot, 'pages', `${slug}.vue`);
         break;
         
       case 'sveltekit':
-        pagePath = path.join(process.cwd(), 'src/routes', slug, '+page.svelte');
+        pagePath = path.join(websiteRoot, 'src/routes', slug, '+page.svelte');
         
         // Also create the loader file
-        const loaderPath = path.join(process.cwd(), 'src/routes', slug, '+page.js');
+        const loaderPath = path.join(websiteRoot, 'src/routes', slug, '+page.js');
         await fs.ensureDir(path.dirname(loaderPath));
         await fs.writeFile(loaderPath, template.loader());
         break;
         
       case 'static':
       default:
-        pagePath = path.join(process.cwd(), `${slug}.html`);
+        // For static sites, create in the website root
+        pagePath = path.join(websiteRoot, `${slug}.html`);
         break;
     }
     
@@ -419,6 +491,12 @@ async function init() {
         validate: input => input.length > 0 || 'Business name is required'
       },
       {
+        type: 'input',
+        name: 'openaiKey',
+        message: 'Enter your OpenAI API key (needed for content generation):',
+        validate: input => input.length > 0 || 'API key is required'
+      },
+      {
         type: 'list',
         name: 'businessType',
         message: 'What type of business is it?',
@@ -458,12 +536,6 @@ async function init() {
             return 'Please enter a valid URL';
           }
         }
-      },
-      {
-        type: 'input',
-        name: 'openaiKey',
-        message: 'Enter your OpenAI API key:',
-        validate: input => input.length > 0 || 'API key is required'
       },
       {
         type: 'list',
@@ -542,12 +614,36 @@ async function init() {
     // Generate topics based on business type
     const businessTypeKey = answers.businessType === 'other' ? 'other' : answers.businessType;
     const businessTypeName = answers.customBusinessType || businessTypes[businessTypeKey].name;
-    const topics = generateTopicsForBusiness(
-      businessTypeKey,
-      answers.businessName,
-      answers.location,
-      answers.nearbyAreas
-    );
+    
+    let topics;
+    if (answers.businessType === 'other' && answers.customBusinessType) {
+      // Use AI to generate topics for custom business type
+      const aiTopics = await generateTopicsWithAI(
+        answers.customBusinessType,
+        answers.location,
+        answers.openaiKey
+      );
+      
+      if (aiTopics.length > 0) {
+        topics = aiTopics;
+      } else {
+        // Fallback to basic topic generation
+        topics = generateTopicsForBusiness(
+          businessTypeKey,
+          answers.businessName,
+          answers.location,
+          answers.nearbyAreas
+        );
+      }
+    } else {
+      // Use predefined topics for known business types
+      topics = generateTopicsForBusiness(
+        businessTypeKey,
+        answers.businessName,
+        answers.location,
+        answers.nearbyAreas
+      );
+    }
     
     // Create configuration
     const config = {
